@@ -30,6 +30,8 @@ static inline void __tlb_remove_table(void *_table)
 #define tlb_flush tlb_flush
 static void tlb_flush(struct mmu_gather *tlb);
 
+static void tlb_flush(struct mmu_gather *tlb);
+
 #include <asm-generic/tlb.h>
 
 static inline void tlb_flush(struct mmu_gather *tlb)

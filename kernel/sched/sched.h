@@ -1934,11 +1934,7 @@ u64 sched_ktime_clock(void);
 unsigned long
 cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load);
 #else
-#define sched_ravg_window TICK_NSEC
-static inline u64 sched_ktime_clock(void)
-{
-	return sched_clock();
-}
+#define sched_ktime_clock ktime_get_ns
 #endif
 
 #ifdef CONFIG_SMP

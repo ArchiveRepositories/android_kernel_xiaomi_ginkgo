@@ -7480,7 +7480,8 @@ static inline void adjust_cpus_for_packing(struct task_struct *p,
 		*best_idle_cpu = -1;
 }
 
-static int get_start_cpu(struct task_struct *p)
+static int start_cpu(struct task_struct *p, bool boosted,
+		     bool sync_boost, struct cpumask *rtg_target)
 {
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 	int start_cpu = rd->min_cap_orig_cpu;
@@ -7501,10 +7502,16 @@ static int get_start_cpu(struct task_struct *p)
 	if (start_cpu == -1 || start_cpu == rd->max_cap_orig_cpu)
 		return start_cpu;
 
-	if (start_cpu == rd->min_cap_orig_cpu &&
-			!task_demand_fits(p, start_cpu)) {
-		start_cpu = rd->mid_cap_orig_cpu == -1 ?
-			rd->max_cap_orig_cpu : rd->mid_cap_orig_cpu;
+	if (sync_boost && rd->mid_cap_orig_cpu != -1)
+		return rd->mid_cap_orig_cpu;
+
+	/* A task always fits on its rtg_target */
+	if (rtg_target) {
+		int rtg_target_cpu = cpumask_first_and(rtg_target,
+						cpu_online_mask);
+
+		if (rtg_target_cpu < nr_cpu_ids)
+			return rtg_target_cpu;
 	}
 
 	if (start_cpu == rd->mid_cap_orig_cpu &&
@@ -7521,6 +7528,7 @@ enum fastpaths {
 };
 
 static inline int find_best_target(struct task_struct *p, int *backup_cpu,
+				   bool boosted, bool sync_boost,
 				   bool prefer_idle,
 				   struct find_best_target_env *fbt_env)
 {
@@ -7559,8 +7567,10 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	if (prefer_idle && boosted)
 		target_capacity = 0;
 
-	if (p->in_iowait)
-		most_spare_wake_cap = LONG_MIN;
+	/* Find start CPU based on boost value */
+	cpu = start_cpu(p, boosted, sync_boost, fbt_env->rtg_target);
+	if (cpu < 0)
+		return -1;
 
 	/* Find start CPU based on boost value */
 	start_cpu = fbt_env->start_cpu;
@@ -8173,7 +8183,7 @@ static inline bool is_many_wakeup(int sibling_count_hint)
 static int find_energy_efficient_cpu(struct sched_domain *sd,
 				     struct task_struct *p,
 				     int cpu, int prev_cpu,
-				     int sync, int sibling_count_hint)
+				     int sync, bool sync_boost)
 {
 	int use_fbt = sched_feat(FIND_BEST_TARGET);
 	int cpu_iter, eas_cpu_idx = EAS_CPU_NXT;
@@ -8264,7 +8274,8 @@ static int find_energy_efficient_cpu(struct sched_domain *sd,
 
 		/* Find a cpu with sufficient capacity */
 		target_cpu = find_best_target(p, &eenv->cpu[EAS_CPU_BKP].cpu_id,
-					      prefer_idle, &fbt_env);
+					      boosted, sync_boost, prefer_idle,
+					      &fbt_env);
 		if (target_cpu < 0)
 			goto out;
 
@@ -8490,9 +8501,20 @@ pick_cpu:
 				current->recent_used_cpu = cpu;
 		}
 	} else {
-		if (energy_sd)
+		if (energy_sd) {
+			/*
+			 * If the sync flag is set but ignored, prefer to
+			 * select cpu in the same or nearest cluster as current.
+			 * So if current is a big or big+ cpu and sync is set,
+			 * indicate that the selection algorithm from mid
+			 * capacity cpu should be used.
+			*/
+			bool sync_boost = sync &&
+				      cpu >= cpu_rq(cpu)->rd->mid_cap_orig_cpu;
+
 			new_cpu = find_energy_efficient_cpu(energy_sd, p, cpu,
-					prev_cpu, sync, sibling_count_hint);
+						    prev_cpu, sync, sync_boost);
+		}
 
 		/* if we did an energy-aware placement and had no choices available
 		 * then fall back to the default find_idlest_cpu choice
@@ -13286,7 +13308,8 @@ void check_for_migration(struct rq *rq, struct task_struct *p)
 
 		raw_spin_lock(&migration_lock);
 		rcu_read_lock();
-		new_cpu = find_energy_efficient_cpu(sd, p, cpu, prev_cpu, 0, 1);
+		new_cpu = find_energy_efficient_cpu(sd, p, cpu, prev_cpu,
+						    0, false);
 		rcu_read_unlock();
 		if ((new_cpu != -1) && (new_cpu != prev_cpu) &&
 		    (capacity_orig_of(new_cpu) > capacity_orig_of(prev_cpu))) {

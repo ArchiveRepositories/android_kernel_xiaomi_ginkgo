@@ -38,6 +38,7 @@ struct hwmon_node {
 	unsigned int guard_band_mbps;
 	unsigned int decay_rate;
 	unsigned int io_percent;
+	unsigned int io_percent_constant;
 	unsigned int bw_step;
 	unsigned int sample_ms;
 	unsigned int up_scale;
@@ -321,6 +322,11 @@ static unsigned long get_bw_and_set_irq(struct hwmon_node *node,
 	unsigned int new_bw, io_percent = node->io_percent;
 	ktime_t ts;
 	unsigned int ms = 0;
+
+	io_percent -= node->io_percent_constant;
+
+	if (io_percent < 0)
+		io_percent = 0;
 
 	spin_lock_irqsave(&irq_lock, flags);
 
@@ -802,6 +808,7 @@ static DEVICE_ATTR_RW(sample_ms);
 gov_attr(guard_band_mbps, 0U, 2000U);
 gov_attr(decay_rate, 0U, 100U);
 gov_attr(io_percent, 1U, 100U);
+gov_attr(io_percent_constant, 0U, 100U);
 gov_attr(bw_step, 50U, 1000U);
 gov_attr(up_scale, 0U, 500U);
 gov_attr(up_thres, 1U, 100U);
@@ -818,6 +825,7 @@ static struct attribute *dev_attr[] = {
 	&dev_attr_guard_band_mbps.attr,
 	&dev_attr_decay_rate.attr,
 	&dev_attr_io_percent.attr,
+	&dev_attr_io_percent_constant.attr,
 	&dev_attr_bw_step.attr,
 	&dev_attr_sample_ms.attr,
 	&dev_attr_up_scale.attr,
@@ -967,6 +975,7 @@ int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 	node->guard_band_mbps = 100;
 	node->decay_rate = 90;
 	node->io_percent = 16;
+	node->io_percent_constant = 0;
 	node->bw_step = 190;
 	node->sample_ms = 50;
 	node->up_scale = 0;

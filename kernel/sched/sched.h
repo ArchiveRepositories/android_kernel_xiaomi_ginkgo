@@ -1934,7 +1934,10 @@ u64 sched_ktime_clock(void);
 unsigned long
 cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load);
 #else
-#define sched_ktime_clock ktime_get_ns
+static inline u64 sched_ktime_clock(void)
+{
+	return 0;
+}
 #endif
 
 #ifdef CONFIG_SMP

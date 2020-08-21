@@ -45,12 +45,10 @@ enum sde_rot_dbg_evtlog_flag {
 void sde_rot_evtlog(const char *name, int line, int flag, ...);
 void sde_rot_evtlog_tout_handler(bool queue, const char *name, ...);
 #else
-static inline
-void sde_rot_evtlog(const char *name, int line, int flag, ...)
+static inline void sde_rot_evtlog(const char *name, int line, int flag, ...)
 {
 }
-static inline
-void sde_rot_evtlog_tout_handler(bool queue, const char *name, ...)
+static inline void sde_rot_evtlog_tout_handler(bool queue, const char *name, ...)
 {
 }
 #endif
